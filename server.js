@@ -6,6 +6,7 @@ const cors = require('cors');
 const path = require('path');
 const zlib = require('zlib');
 const { EventEmitter } = require('events');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;

@@ -852,6 +852,9 @@ select.filter-input option { background: var(--bg3); }
         <input type="password" id="login-password" class="form-input" placeholder="Your password"/>
       </div>
       <button class="btn-primary" onclick="doLogin()">Sign In →</button>
+      <div style="text-align: center; margin-top: 16px;">
+        <a href="#" onclick="showForgotPassword()" style="color: var(--gold); text-decoration: none; font-size: 14px;">Forgot Password?</a>
+      </div>
     </div>
 
     <!-- REGISTER -->
@@ -1459,6 +1462,38 @@ select.filter-input option { background: var(--bg3); }
   </div>
 </div>
 
+<!-- Forgot Password Modal -->
+<div class="modal-overlay" id="forgot-password-modal-overlay" onclick="closeModal('forgot-password-modal-overlay')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-header">
+      <div class="modal-title">Reset Password</div>
+      <button class="modal-close" onclick="closeModal('forgot-password-modal-overlay')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="forgot-password-form">
+        <p style="color: var(--text3); margin-bottom: 20px; font-size: 14px; line-height: 1.5;">
+          Enter your email address and we'll send you a link to reset your password.
+        </p>
+        <div class="form-group">
+          <label class="form-label">Email Address</label>
+          <input type="email" id="forgot-email" class="form-input" placeholder="your@email.com"/>
+        </div>
+      </div>
+      <div id="forgot-password-success" style="display: none; text-align: center;">
+        <div style="font-size: 48px; margin-bottom: 16px;">📧</div>
+        <div style="font-size: 18px; font-weight: 600; color: var(--gold2); margin-bottom: 8px;">Check your email!</div>
+        <p style="color: var(--text3); font-size: 14px; line-height: 1.5;">
+          We've sent a password reset link to your email address. Click the link to reset your password.
+        </p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeModal('forgot-password-modal-overlay')">Cancel</button>
+      <button class="btn btn-gold" id="forgot-submit-btn" onclick="sendResetEmail()">Send Reset Link</button>
+    </div>
+  </div>
+</div>
+
 <!-- Toast Container -->
 <div class="toast-container" id="toast-container"></div>
 
@@ -1850,7 +1885,17 @@ async function loadDashboard() {
 
     // Approximate guest/vendor counts from events
     document.getElementById('stat-guests').textContent = events.reduce((s, e) => s + (e.guestCount || 0), 0);
-    document.getElementById('stat-vendors').textContent = '—';
+
+    // Fetch and count booked vendors
+    try {
+      const vendors = await api('/api/vendors');
+      const bookedVendors = vendors.filter(v => v.status === 'booked' || v.status === 'confirmed');
+      document.getElementById('stat-vendors').textContent = bookedVendors.length;
+    } catch (err) {
+      console.error('Failed to load vendor stats:', err);
+      document.getElementById('stat-vendors').textContent = '—';
+    }
+
     document.getElementById('stat-budget').textContent = '₹' + formatNum(totalBudget);
 
     // Render upcoming events
@@ -2200,6 +2245,10 @@ async function saveVendor() {
     closeModal('vendor-modal-overlay');
     showToast(id ? 'Vendor updated' : 'Vendor added! 🏢', 'success');
     loadVendors();
+    // Refresh dashboard stats if dashboard is visible
+    if (document.getElementById('view-dashboard').style.display !== 'none') {
+      loadDashboard();
+    }
   } catch(e) { showToast(e.message, 'error'); }
 }
 
@@ -2209,6 +2258,10 @@ async function deleteVendor(id) {
     await api(`/api/vendors/${id}`, { method: 'DELETE' });
     showToast('Vendor removed', 'success');
     loadVendors();
+    // Refresh dashboard stats if dashboard is visible
+    if (document.getElementById('view-dashboard').style.display !== 'none') {
+      loadDashboard();
+    }
   } catch(e) { showToast(e.message, 'error'); }
 }
 
@@ -2470,6 +2523,51 @@ function openModal(id) {
 }
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
+}
+
+function showForgotPassword() {
+  document.getElementById('forgot-password-form').style.display = 'block';
+  document.getElementById('forgot-password-success').style.display = 'none';
+  document.getElementById('forgot-submit-btn').style.display = 'inline-block';
+  document.getElementById('forgot-email').value = '';
+  openModal('forgot-password-modal-overlay');
+}
+
+async function sendResetEmail() {
+  const email = document.getElementById('forgot-email').value.trim();
+  if (!email) {
+    showToast('Please enter your email address', 'error');
+    return;
+  }
+
+  const btn = document.getElementById('forgot-submit-btn');
+  const originalText = btn.textContent;
+  btn.textContent = 'Sending...';
+  btn.disabled = true;
+
+  try {
+    const response = await fetch('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      document.getElementById('forgot-password-form').style.display = 'none';
+      document.getElementById('forgot-password-success').style.display = 'block';
+      document.querySelector('.modal-footer').style.display = 'none';
+      showToast('Password reset link sent to your email!', 'success');
+    } else {
+      showToast(data.error || 'Failed to send reset email', 'error');
+    }
+  } catch (error) {
+    showToast('Network error. Please try again.', 'error');
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
 }
 
 function showToast(msg, type = 'success') {
